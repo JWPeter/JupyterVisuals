@@ -2,4 +2,4 @@ ipykernel
 ipywidgets
 numpy
 matplotlib
-simpleitk ###requires python 3.11
+simpleitk 
