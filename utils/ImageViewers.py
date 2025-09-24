@@ -8,6 +8,11 @@ import numpy as np
 
 
 def myshow_comp(img_1, img_2, title=None, margin=0.05, dpi=80, cmap="gray", fig_size_multiplier=1.0):
+    """ 
+    Deprecated function, included for backward compatibility, use myshow_composition instead.
+    Display two images side by side for comparison. 
+    If the images are 3D, a slider is added to scroll through the z-axis. 
+    """
     nda_1 = sitk.GetArrayFromImage(img_1)
     nda_2 = sitk.GetArrayFromImage(img_2)
 
@@ -74,24 +79,27 @@ def myshow_composition(img_list, title=None, margin=0.05, dpi=80, cmap="gray", f
     spacing = img_list[0].GetSpacing()
     nr_images = len(img_list)
     slicer = False
+    channel_list=[]
+    for i in range(nr_images):
+        c=1
+        if nda_list[i].ndim == 3:
+            # fastest dim, either component or x
+            c = nda_list[i].shape[-1]
 
-    if nda_list[0].ndim == 3:
-        # fastest dim, either component or x
-        c = nda_list[0].shape[-1]
+            # the the number of components is 3 or 4 consider it an RGB image
+            if not c in (3, 4):
+                slicer = True
+                c=1
+        elif nda_list[i].ndim == 4:
+            c = nda_list[i].shape[-1]
 
-        # the the number of components is 3 or 4 consider it an RGB image
-        if not c in (3, 4):
+            if not c in (3, 4):
+                raise RuntimeError("Unable to show 3D-vector Image")
+
+            # take a z-slice
             slicer = True
-
-    elif nda_list[0].ndim == 4:
-        c = nda_list[0].shape[-1]
-
-        if not c in (3, 4):
-            raise RuntimeError("Unable to show 3D-vector Image")
-
-        # take a z-slice
-        slicer = True
-
+        channel_list.append(c)
+        
     if slicer:
         ysize = nda_list[0].shape[1]
         xsize = nda_list[0].shape[2]
