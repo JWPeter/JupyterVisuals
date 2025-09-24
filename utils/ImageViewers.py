@@ -4,6 +4,7 @@ import SimpleITK as sitk
 import matplotlib.pyplot as plt
 from mpl_toolkits.axes_grid1 import ImageGrid
 import numpy as np
+import os
 
 
 
@@ -72,6 +73,46 @@ def myshow_comp(img_1, img_2, title=None, margin=0.05, dpi=80, cmap="gray", fig_
         interact(callback, z=(0, nda_1.shape[0] - 1))
     else:
         callback()
+
+
+
+def myshow_selector(img_dir, always_shown=None, **kwargs):
+    """
+    Wrapper for myshow_composition that shows a dropdown 
+    Args:
+        img_dir (list): directory containing images.
+        always_shown (list): list of image file names that are always shown in addition to the selected image.
+        **kwargs: Extra arguments passed to myshow_composition.
+    """
+    img_path_list = [os.path.join(img_dir, img) for img in os.listdir(img_dir) if img.endswith(".nii.gz")]
+    ### remove and store seperately always shown images
+    if always_shown is not None:
+        always_shown_paths = [os.path.join(img_dir, img) for img in always_shown if img in os.listdir(img_dir)]
+        img_path_list = [img for img in img_path_list if os.path.basename(img) not in always_shown]
+
+    def generate_titles(img_path_list):
+        return [os.path.basename(img).replace(".nii.gz", "").replace("slice_aligned_", "") for img in img_path_list]
+
+
+    titles = generate_titles(img_path_list)
+
+    ### load images
+    img_list = [sitk.ReadImage(img_path) for img_path in img_path_list]
+    if always_shown is not None:
+        always_shown_imgs = [sitk.ReadImage(img_path) for img_path in always_shown_paths]
+        always_shown_titles = generate_titles(always_shown_paths)
+
+    dropdown = widgets.Dropdown(
+        options=list(zip(titles, range(len(img_list)))),
+        description="Select image:",
+        style={'description_width': 'initial'},
+        layout=widgets.Layout(width='50%')
+    )
+
+    def _update(idx):
+        myshow_composition([img_list[idx]]+always_shown_imgs, title=[titles[idx]]+always_shown_titles, **kwargs)
+
+    widgets.interact(_update, idx=dropdown)
 
 
 def myshow_composition(img_list, title=None, margin=0.05, dpi=80, cmap="gray", fig_size_multiplier=1.0):
