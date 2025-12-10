@@ -288,9 +288,26 @@ def checkering(img_1, img_2, tile_size=25):
     """
     assert (img_1.shape==img_2.shape)
     img_c=np.zeros(img_1.shape)
+    tiles=[int(img_1.shape[-2]/tile_size), int(img_1.shape[-1]/tile_size)]
+    for i in range(tiles[-2]):
+        for j in range(tiles[-1]):
+            if((i+j)%2==0):
+                img_c[..., i*tile_size:(i+1)*tile_size, j*tile_size:(j+1)*tile_size]=img_1[..., i*tile_size:(i+1)*tile_size, j*tile_size:(j+1)*tile_size]
+            else:
+                img_c[..., i*tile_size:(i+1)*tile_size, j*tile_size:(j+1)*tile_size]=img_2[...,i*tile_size:(i+1)*tile_size, j*tile_size:(j+1)*tile_size]
+
+    return img_c
+
+def checkering_color(img_1, img_2, tile_size=25):
+    """
+    Create a checkerboard image of the two input images. The optional tile_size parameter gouverns the side length of the checkerboard tiles
+    Checkering is done over the first two dimensions of the input images, ignoring potential trailing dimensions and color channels
+    """
+    assert (img_1.shape==img_2.shape)
+    img_c=np.zeros(img_1.shape)
     tiles=[int(img_1.shape[0]/tile_size), int(img_1.shape[1]/tile_size)]
-    for i in range(tiles[0]):
-        for j in range(tiles[1]):
+    for i in range(tiles[-2]):
+        for j in range(tiles[-1]):
             if((i+j)%2==0):
                 img_c[i*tile_size:(i+1)*tile_size, j*tile_size:(j+1)*tile_size]=img_1[i*tile_size:(i+1)*tile_size, j*tile_size:(j+1)*tile_size]
             else:
@@ -308,8 +325,13 @@ def checkering_sitk(sitk_img_1: sitk.Image, sitk_img_2: sitk.Image, tile_size=25
     assert (sitk_img_1.GetSize()==sitk_img_2.GetSize())
     img_1=sitk.GetArrayFromImage(sitk_img_1)
     img_2=sitk.GetArrayFromImage(sitk_img_2)
-    img_c=checkering(img_1, img_2, tile_size)
-    img_c_sitk=sitk.GetImageFromArray(img_c, isVector=True)
+    isVector=(sitk_img_1.GetNumberOfComponentsPerPixel()>1)
+    if (isVector):
+        img_c=checkering_color(img_1, img_2, tile_size)
+        img_c=img_c.astype(img_1.dtype)
+    else:
+        img_c=checkering(img_1, img_2, tile_size)
+    img_c_sitk=sitk.GetImageFromArray(img_c, isVector=isVector)
     img_c_sitk.CopyInformation(sitk_img_1)
     return img_c_sitk
 
