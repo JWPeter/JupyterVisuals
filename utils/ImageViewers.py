@@ -75,6 +75,17 @@ def myshow_comp(img_1, img_2, title=None, margin=0.05, dpi=80, cmap="gray", fig_
         callback()
 
 
+def generate_titles(img_path_list):
+        def clean_title(img_path):
+            base_name = os.path.basename(img_path)
+            title = base_name.replace(".nii.gz", "")
+            if "slice_aligned_" in title:
+                title = title.replace("slice_aligned_", "")
+            return title
+
+        return [clean_title(img_path) for img_path in img_path_list]
+
+
 
 def myshow_selector(img_dir, always_shown=None, **kwargs):
     """
@@ -89,10 +100,6 @@ def myshow_selector(img_dir, always_shown=None, **kwargs):
     if always_shown is not None:
         always_shown_paths = [os.path.join(img_dir, img) for img in always_shown if img in os.listdir(img_dir)]
         img_path_list = [img for img in img_path_list if os.path.basename(img) not in always_shown]
-
-    def generate_titles(img_path_list):
-        return [os.path.basename(img).replace(".nii.gz", "").replace("slice_aligned_", "") for img in img_path_list]
-
 
     titles = generate_titles(img_path_list)
 
