@@ -315,6 +315,67 @@ def checkering_color(img_1, img_2, tile_size=25):
 
     return img_c
 
+def myshow_overlay(img_1, img_2, title=None, margin=0.05, dpi=80, cmap="gray", fig_size_multiplier=1.0):
+    nda_1 = sitk.GetArrayFromImage(img_1)
+    nda_2 = sitk.GetArrayFromImage(img_2)
+
+    spacing = img_1.GetSpacing()
+    slicer = False
+
+    if nda_1.ndim == 3:
+        # fastest dim, either component or x
+        c = nda_1.shape[-1]
+
+        # the the number of components is 3 or 4 consider it an RGB image
+        if not c in (3, 4):
+            slicer = True
+
+    elif nda_1.ndim == 4:
+        c = nda_1.shape[-1]
+
+        if not c in (3, 4):
+            raise RuntimeError("Unable to show 3D-vector Image")
+
+        # take a z-slice
+        slicer = True
+
+    if slicer:
+        ysize = nda_1.shape[1]
+        xsize = nda_1.shape[2]
+    else:
+        ysize = nda_1.shape[0]
+        xsize = nda_1.shape[1]
+
+    # Make a figure big enough to accommodate an axis of xpixels by ypixels
+    # as well as the ticklabels, etc...
+    figsize = ((1 + margin) * ysize / dpi)*fig_size_multiplier, ((1 + margin) * xsize / dpi)*fig_size_multiplier
+
+    def callback(z=None):
+        extent = (0, xsize * spacing[1], ysize * spacing[0], 0)
+
+        fig = plt.figure(figsize=figsize, dpi=dpi)
+
+        # Make the axis the right size...
+        ax = fig.add_axes([margin, margin, (1 - 2 * margin), 1 - 2 * margin])
+
+        if z is None:
+            ax.imshow(nda_1, extent=extent, interpolation=None, cmap=cmap, alpha=0.5)   #### Add here aspect ratio derived from the img direction array
+            ax.imshow(nda_2, extent=extent, interpolation=None, cmap=cmap, alpha=0.5)
+        else:
+            ax.imshow(nda_1[z, ...], extent=extent, interpolation=None, cmap=cmap, alpha=0.5)
+            ax.imshow(nda_2[z, ...], extent=extent, interpolation=None, cmap=cmap, alpha=0.5)
+
+        if title:
+            plt.title(title)
+
+        plt.show()
+
+    if slicer:
+        interact(callback, z=(0, nda_1.shape[0] - 1))
+    else:
+        callback()
+
+
 
 def checkering_sitk(sitk_img_1: sitk.Image, sitk_img_2: sitk.Image, tile_size=25):
     """
