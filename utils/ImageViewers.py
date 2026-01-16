@@ -160,7 +160,7 @@ def myshow_composition(img_list, title=None, margin=0.05, dpi=80, cmap="gray", f
     figsize = ((1 + margin) * ysize / dpi)*fig_size_multiplier, ((1 + margin) * xsize / dpi)*fig_size_multiplier
 
     def callback(z=None):
-        extent = (0, xsize * spacing[1], ysize * spacing[0], 0)
+        extent = (0, xsize * (1/6.37), ysize * (1/6.37), 0) #(0, xsize * spacing[1], ysize * spacing[0], 0) #Hard coded for now, we should get the correct sizes into the spacing metadata for the data! 
 
         fig = plt.figure(figsize=figsize, dpi=dpi)
 
