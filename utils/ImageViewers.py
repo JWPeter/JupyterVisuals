@@ -96,6 +96,8 @@ def myshow_selector(img_dir, always_shown=None, **kwargs):
         **kwargs: Extra arguments passed to myshow_composition.
     """
     img_path_list = [os.path.join(img_dir, img) for img in os.listdir(img_dir) if img.endswith(".nii.gz")]
+    always_shown_imgs = []
+    always_shown_titles = []
     ### remove and store seperately always shown images
     if always_shown is not None:
         always_shown_paths = [os.path.join(img_dir, img) for img in always_shown if img in os.listdir(img_dir)]
@@ -120,6 +122,178 @@ def myshow_selector(img_dir, always_shown=None, **kwargs):
         myshow_composition([img_list[idx]]+always_shown_imgs, title=[titles[idx]]+always_shown_titles, **kwargs)
 
     widgets.interact(_update, idx=dropdown)
+
+
+def myshow_composition_mask(img_list, mask, title=None, margin=0.05, dpi=80, cmap="gray", fig_size_multiplier=1.0):
+    nda_list = [sitk.GetArrayFromImage(img) for img in img_list]
+    nda_mask = sitk.GetArrayFromImage(mask)
+
+    def _is_color(arr):
+        return arr.ndim in (3, 4) and arr.shape[-1] in (3, 4)
+
+    def _spatial_shape(arr):
+        if arr.ndim == 2:
+            return arr.shape
+        if arr.ndim == 3:
+            if _is_color(arr):
+                return arr.shape[:2]
+            return arr.shape[1:]
+        if arr.ndim == 4 and _is_color(arr):
+            return arr.shape[1:3]
+        raise RuntimeError("Unsupported image dimensionality")
+
+    def _depth(arr):
+        if arr.ndim == 3 and not _is_color(arr):
+            return arr.shape[0]
+        if arr.ndim == 4 and _is_color(arr):
+            return arr.shape[0]
+        return None
+
+    def _display_slice(arr, z):
+        if z is None:
+            return arr
+        if arr.ndim == 2:
+            return arr
+        if arr.ndim == 3:
+            if _is_color(arr):
+                return arr
+            return arr[z, ...]
+        if arr.ndim == 4 and _is_color(arr):
+            return arr[z, ...]
+        raise RuntimeError("Unsupported image dimensionality")
+
+    mask_spatial_shape = _spatial_shape(nda_mask)
+    for nda in nda_list:
+        if _spatial_shape(nda) != mask_spatial_shape:
+            raise ValueError("All images and mask must have matching spatial dimensions")
+
+    all_depths = [d for d in [_depth(nda_mask)] + [_depth(nda) for nda in nda_list] if d is not None]
+    if len(set(all_depths)) > 1:
+        raise ValueError("All volumetric images and mask must have the same number of slices")
+
+    nda_mask_bool = nda_mask.astype(bool)
+    spacing = img_list[0].GetSpacing()
+    nr_images = len(img_list)
+    slicer = len(all_depths) > 0
+    channel_list = []
+
+    for i in range(nr_images):
+        c = 1
+        if nda_list[i].ndim == 3:
+            c = nda_list[i].shape[-1]
+            if not c in (3, 4):
+                slicer = True
+                c = 1
+        elif nda_list[i].ndim == 4:
+            c = nda_list[i].shape[-1]
+            if not c in (3, 4):
+                raise RuntimeError("Unable to show 3D-vector Image")
+            slicer = True
+        channel_list.append(c)
+
+    ysize, xsize = mask_spatial_shape
+
+    figsize = ((1 + margin) * ysize / dpi) * fig_size_multiplier, ((1 + margin) * xsize / dpi) * fig_size_multiplier
+
+    if isinstance(title, (list, tuple)):
+        title_list = list(title)
+    elif title is None:
+        title_list = None
+    else:
+        title_list = [title]
+
+    def callback(z=None):
+        extent = (0, xsize * (1 / 6.37), ysize * (1 / 6.37), 0)
+
+        fig = plt.figure(figsize=figsize, dpi=dpi)
+
+        axes = []
+        for i in range(nr_images):
+            if i == 0:
+                ax = fig.add_axes([margin, margin, (1 - nr_images * margin) * (1 / nr_images), 1 - 2 * margin])
+            else:
+                ax = fig.add_axes([margin * (i + 1) + (1 - nr_images * margin) * (1 / nr_images) * i, margin, (1 - nr_images * margin) * (1 / nr_images), 1 - 2 * margin])
+            axes.append(ax)
+
+        if z is None:
+            mask_plane = nda_mask_bool
+        else:
+            if _depth(nda_mask) is None:
+                mask_plane = nda_mask_bool
+            else:
+                mask_plane = nda_mask_bool[z, ...]
+
+        mask_overlay = np.ma.masked_where(~mask_plane, mask_plane)
+        for i, ax in enumerate(axes):
+            ax.imshow(_display_slice(nda_list[i], z), extent=extent, interpolation=None, cmap=cmap)
+            ax.imshow(mask_overlay, extent=extent, interpolation=None, cmap="gray", vmin=0, vmax=1)
+
+        if title_list:
+            if len(title_list) == nr_images:
+                for i, ax in enumerate(axes):
+                    ax.set_title(title_list[i], loc="center")
+            else:
+                fig.suptitle(str(title_list[0]))
+
+        plt.show()
+
+    if slicer:
+        interact(callback, z=(0, all_depths[0] - 1))
+    else:
+        callback()
+
+
+def myshow_selector_mask(img_dir, always_shown=None, **kwargs):
+    """
+    Similar to myshow_selector but with an additional dropdown for selecting a mask/contour.
+    Any selected mask/contour is overlaid on all displayed regular images.
+    """
+    img_path_list = [os.path.join(img_dir, img) for img in os.listdir(img_dir) if img.endswith(".nii.gz")]
+    mask_path_list = [img for img in img_path_list if ("mask" in os.path.basename(img).lower() or "contour" in os.path.basename(img).lower())]
+    regular_path_list = [img for img in img_path_list if img not in mask_path_list]
+
+    if len(regular_path_list) == 0:
+        raise ValueError("No regular .nii.gz images found in img_dir")
+    if len(mask_path_list) == 0:
+        raise ValueError("No mask/contour .nii.gz images found in img_dir")
+
+    always_shown_imgs = []
+    always_shown_titles = []
+    if always_shown is not None:
+        always_shown_paths = [os.path.join(img_dir, img) for img in always_shown if os.path.join(img_dir, img) in regular_path_list]
+        regular_path_list = [img for img in regular_path_list if os.path.basename(img) not in always_shown]
+        always_shown_imgs = [sitk.ReadImage(img_path) for img_path in always_shown_paths]
+        always_shown_titles = generate_titles(always_shown_paths)
+
+    if len(regular_path_list) == 0:
+        raise ValueError("No selectable regular images remain after filtering always_shown")
+
+    regular_titles = generate_titles(regular_path_list)
+    mask_titles = generate_titles(mask_path_list)
+
+    regular_imgs = [sitk.ReadImage(img_path) for img_path in regular_path_list]
+    mask_imgs = [sitk.ReadImage(img_path) for img_path in mask_path_list]
+
+    image_dropdown = widgets.Dropdown(
+        options=list(zip(regular_titles, range(len(regular_imgs)))),
+        description="Select image:",
+        style={"description_width": "initial"},
+        layout=widgets.Layout(width="50%")
+    )
+
+    mask_dropdown = widgets.Dropdown(
+        options=list(zip(mask_titles, range(len(mask_imgs)))),
+        description="Select mask/contour:",
+        style={"description_width": "initial"},
+        layout=widgets.Layout(width="50%")
+    )
+
+    def _update(image_idx, mask_idx):
+        display_imgs = [regular_imgs[image_idx]] + always_shown_imgs
+        display_titles = [regular_titles[image_idx]] + always_shown_titles
+        myshow_composition_mask(display_imgs, mask_imgs[mask_idx], title=display_titles, **kwargs)
+
+    widgets.interact(_update, image_idx=image_dropdown, mask_idx=mask_dropdown)
 
 
 def myshow_composition(img_list, title=None, margin=0.05, dpi=80, cmap="gray", fig_size_multiplier=1.0):
@@ -159,6 +333,13 @@ def myshow_composition(img_list, title=None, margin=0.05, dpi=80, cmap="gray", f
     # as well as the ticklabels, etc...
     figsize = ((1 + margin) * ysize / dpi)*fig_size_multiplier, ((1 + margin) * xsize / dpi)*fig_size_multiplier
 
+    if isinstance(title, (list, tuple)):
+        title_list = list(title)
+    elif title is None:
+        title_list = None
+    else:
+        title_list = [title]
+
     def callback(z=None):
         extent = (0, xsize * (1/6.37), ysize * (1/6.37), 0) #(0, xsize * spacing[1], ysize * spacing[0], 0) #Hard coded for now, we should get the correct sizes into the spacing metadata for the data! 
 
@@ -180,8 +361,12 @@ def myshow_composition(img_list, title=None, margin=0.05, dpi=80, cmap="gray", f
             for i, ax in enumerate(axes):
                 ax.imshow(nda_list[i][z, ...], extent=extent, interpolation=None, cmap=cmap)
 
-        if title:
-            plt.title(title)
+        if title_list:
+            if len(title_list) == nr_images:
+                for i, ax in enumerate(axes):
+                    ax.set_title(title_list[i], loc="center")
+            else:
+                fig.suptitle(str(title_list[0]))
 
         plt.show()
 
@@ -389,16 +574,7 @@ def myshow_mask(img_1, mask, title=None, margin=0.05, dpi=80, cmap="gray", fig_s
 
     if nda_1.shape != nda_mask.shape:
         raise ValueError("img_1 and mask must have the same shape")
-
-    nda_display = np.array(nda_1, copy=True)
-    if np.issubdtype(nda_display.dtype, np.integer):
-        white_value = np.iinfo(nda_display.dtype).max
-    else:
-        max_val = float(np.max(nda_display))
-        min_val = float(np.min(nda_display))
-        dynamic_range = max_val - min_val
-        white_value = max_val + (dynamic_range if dynamic_range > 0 else 1.0)
-    nda_display[nda_mask.astype(bool)] = white_value
+    nda_mask_bool = nda_mask.astype(bool)
 
     spacing = img_1.GetSpacing()
     slicer = False
@@ -440,9 +616,13 @@ def myshow_mask(img_1, mask, title=None, margin=0.05, dpi=80, cmap="gray", fig_s
         ax = fig.add_axes([margin, margin, (1 - 2 * margin), 1 - 2 * margin])
 
         if z is None:
-            ax.imshow(nda_display, extent=extent, interpolation=None, cmap=cmap)
+            ax.imshow(nda_1, extent=extent, interpolation=None, cmap=cmap)
+            mask_overlay = np.ma.masked_where(~nda_mask_bool, nda_mask_bool)
+            ax.imshow(mask_overlay, extent=extent, interpolation=None, cmap="gray", vmin=0, vmax=1)
         else:
-            ax.imshow(nda_display[z, ...], extent=extent, interpolation=None, cmap=cmap)
+            ax.imshow(nda_1[z, ...], extent=extent, interpolation=None, cmap=cmap)
+            mask_overlay = np.ma.masked_where(~nda_mask_bool[z, ...], nda_mask_bool[z, ...])
+            ax.imshow(mask_overlay, extent=extent, interpolation=None, cmap="gray", vmin=0, vmax=1)
 
         if title:
             plt.title(title)
