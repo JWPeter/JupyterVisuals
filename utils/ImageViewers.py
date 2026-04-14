@@ -383,6 +383,78 @@ def myshow_overlay(img_1, img_2, title=None, margin=0.05, dpi=80, cmap="gray", f
         callback()
 
 
+def myshow_mask(img_1, mask, title=None, margin=0.05, dpi=80, cmap="gray", fig_size_multiplier=1.0):
+    nda_1 = sitk.GetArrayFromImage(img_1)
+    nda_mask = sitk.GetArrayFromImage(mask)
+
+    if nda_1.shape != nda_mask.shape:
+        raise ValueError("img_1 and mask must have the same shape")
+
+    nda_display = np.array(nda_1, copy=True)
+    if np.issubdtype(nda_display.dtype, np.integer):
+        white_value = np.iinfo(nda_display.dtype).max
+    else:
+        max_val = float(np.max(nda_display))
+        min_val = float(np.min(nda_display))
+        dynamic_range = max_val - min_val
+        white_value = max_val + (dynamic_range if dynamic_range > 0 else 1.0)
+    nda_display[nda_mask.astype(bool)] = white_value
+
+    spacing = img_1.GetSpacing()
+    slicer = False
+
+    if nda_1.ndim == 3:
+        # fastest dim, either component or x
+        c = nda_1.shape[-1]
+
+        # the the number of components is 3 or 4 consider it an RGB image
+        if not c in (3, 4):
+            slicer = True
+
+    elif nda_1.ndim == 4:
+        c = nda_1.shape[-1]
+
+        if not c in (3, 4):
+            raise RuntimeError("Unable to show 3D-vector Image")
+
+        # take a z-slice
+        slicer = True
+
+    if slicer:
+        ysize = nda_1.shape[1]
+        xsize = nda_1.shape[2]
+    else:
+        ysize = nda_1.shape[0]
+        xsize = nda_1.shape[1]
+
+    # Make a figure big enough to accommodate an axis of xpixels by ypixels
+    # as well as the ticklabels, etc...
+    figsize = ((1 + margin) * ysize / dpi)*fig_size_multiplier, ((1 + margin) * xsize / dpi)*fig_size_multiplier
+
+    def callback(z=None):
+        extent = (0, xsize * spacing[1], ysize * spacing[0], 0)
+
+        fig = plt.figure(figsize=figsize, dpi=dpi)
+
+        # Make the axis the right size...
+        ax = fig.add_axes([margin, margin, (1 - 2 * margin), 1 - 2 * margin])
+
+        if z is None:
+            ax.imshow(nda_display, extent=extent, interpolation=None, cmap=cmap)
+        else:
+            ax.imshow(nda_display[z, ...], extent=extent, interpolation=None, cmap=cmap)
+
+        if title:
+            plt.title(title)
+
+        plt.show()
+
+    if slicer:
+        interact(callback, z=(0, nda_1.shape[0] - 1))
+    else:
+        callback()
+
+
 
 def checkering_sitk(sitk_img_1: sitk.Image, sitk_img_2: sitk.Image, tile_size=25):
     """
