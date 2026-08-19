@@ -161,6 +161,17 @@ def myshow_composition_mask(img_list, mask, title=None, margin=0.05, dpi=80, cma
         if arr.ndim == 4 and _is_color(arr):
             return arr[z, ...]
         raise RuntimeError("Unsupported image dimensionality")
+    
+    def _get_boolean_mask(arr):
+        if arr.ndim == 2:
+            return arr.astype(bool)
+        if arr.ndim == 3:
+            if _is_color(arr):
+                return np.any(arr, axis=-1).astype(bool)
+            return arr.astype(bool)
+        if arr.ndim == 4 and _is_color(arr):
+            return np.any(arr, axis=-1).astype(bool)
+        raise RuntimeError("Unsupported image dimensionality")
 
     mask_spatial_shape = _spatial_shape(nda_mask)
     for nda in nda_list:
@@ -171,7 +182,7 @@ def myshow_composition_mask(img_list, mask, title=None, margin=0.05, dpi=80, cma
     if len(set(all_depths)) > 1:
         raise ValueError("All volumetric images and mask must have the same number of slices")
 
-    nda_mask_bool = nda_mask.astype(bool)
+    #nda_mask_bool = nda_mask.astype(bool)
     spacing = img_list[0].GetSpacing()
     nr_images = len(img_list)
     slicer = len(all_depths) > 0
@@ -216,17 +227,26 @@ def myshow_composition_mask(img_list, mask, title=None, margin=0.05, dpi=80, cma
             axes.append(ax)
 
         if z is None:
-            mask_plane = nda_mask_bool
+            mask_plane = nda_mask
         else:
             if _depth(nda_mask) is None:
-                mask_plane = nda_mask_bool
+                mask_plane = nda_mask
             else:
-                mask_plane = nda_mask_bool[z, ...]
+                mask_plane = nda_mask[z, ...]
 
-        mask_overlay = np.ma.masked_where(~mask_plane, mask_plane)
+        mask_plane_bool = _get_boolean_mask(mask_plane)
+        if _is_color(mask_plane):
+            normalizing_constant = 255 if mask_plane.dtype == np.uint8 else 1.0
+            mask_overlay = np.zeros((*mask_plane.shape[:-1], 4), dtype=float)
+            mask_overlay[..., :3] = mask_plane.astype(float) / normalizing_constant
+            mask_overlay[..., 3] = mask_plane_bool.astype(float) * 0.9
+        else:
+            mask_overlay = np.zeros((*mask_plane.shape, 4), dtype=float)
+            mask_overlay[..., :3] = 1.0
+            mask_overlay[..., 3] = mask_plane.astype(float) * 0.9
         for i, ax in enumerate(axes):
             ax.imshow(_display_slice(nda_list[i], z), extent=extent, interpolation=None, cmap=cmap)
-            ax.imshow(mask_overlay, extent=extent, interpolation=None, cmap="gray", vmin=0, vmax=1)
+            ax.imshow(mask_overlay, extent=extent, interpolation="nearest")
 
         if title_list:
             if len(title_list) == nr_images:
