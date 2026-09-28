@@ -308,12 +308,25 @@ def myshow_selector_mask(img_dir, always_shown=None, **kwargs):
         layout=widgets.Layout(width="50%")
     )
 
-    def _update(image_idx, mask_idx):
+    mask_dropdown_2 = widgets.Dropdown(
+        options=list(zip(mask_titles, range(len(mask_imgs)))),
+        description="Select mask/contour:",
+        style={"description_width": "initial"},
+        layout=widgets.Layout(width="50%")
+    )
+
+    def _update(image_idx, mask_idx_1, mask_idx_2):
         display_imgs = [regular_imgs[image_idx]] + always_shown_imgs
         display_titles = [regular_titles[image_idx]] + always_shown_titles
-        myshow_composition_mask(display_imgs, mask_imgs[mask_idx], title=display_titles, **kwargs)
+        if mask_idx_1 == mask_idx_2:
+            mask_img = mask_imgs[mask_idx_1]
+        else:
+            mask_img_1 = mask_imgs[mask_idx_1]
+            mask_img_2 = mask_imgs[mask_idx_2]
+            mask_img = sitk.Maximum(mask_img_1, mask_img_2)
+        myshow_composition_mask(display_imgs, mask_img, title=display_titles, **kwargs)
 
-    widgets.interact(_update, image_idx=image_dropdown, mask_idx=mask_dropdown)
+    widgets.interact(_update, image_idx=image_dropdown, mask_idx_1=mask_dropdown, mask_idx_2=mask_dropdown_2)
 
 
 def myshow_composition(img_list, title=None, margin=0.05, dpi=80, cmap="gray", fig_size_multiplier=1.0):
