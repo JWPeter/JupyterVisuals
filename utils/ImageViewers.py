@@ -2,6 +2,7 @@ from ipywidgets import interact, interactive
 from ipywidgets import widgets
 import SimpleITK as sitk
 import matplotlib.pyplot as plt
+import matplotlib
 from mpl_toolkits.axes_grid1 import ImageGrid
 import numpy as np
 import os
@@ -123,13 +124,16 @@ def myshow_selector(img_dir, always_shown=None, **kwargs):
 
     widgets.interact(_update, idx=dropdown)
 
+def is_color(arr):
+    return arr.ndim in (3, 4) and arr.shape[-1] in (3, 4)
+
 
 def myshow_composition_mask(img_list, mask, title=None, margin=0.05, dpi=80, cmap="gray", fig_size_multiplier=1.0):
     nda_list = [sitk.GetArrayFromImage(img) for img in img_list]
     nda_mask = sitk.GetArrayFromImage(mask)
 
     def _is_color(arr):
-        return arr.ndim in (3, 4) and arr.shape[-1] in (3, 4)
+        return is_color(arr)
 
     def _spatial_shape(arr):
         if arr.ndim == 2:
@@ -241,9 +245,10 @@ def myshow_composition_mask(img_list, mask, title=None, margin=0.05, dpi=80, cma
             mask_overlay[..., :3] = mask_plane.astype(float) / normalizing_constant
             mask_overlay[..., 3] = mask_plane_bool.astype(float) * 0.9
         else:
+            normalizing_constant = 255 if mask_plane.dtype == np.uint8 else 1.0
             mask_overlay = np.zeros((*mask_plane.shape, 4), dtype=float)
             mask_overlay[..., :3] = 1.0
-            mask_overlay[..., 3] = mask_plane.astype(float) * 0.9
+            mask_overlay[..., 3] = mask_plane.astype(float) * 0.9 / normalizing_constant
         for i, ax in enumerate(axes):
             ax.imshow(_display_slice(nda_list[i], z), extent=extent, interpolation=None, cmap=cmap)
             ax.imshow(mask_overlay, extent=extent, interpolation="nearest")
@@ -323,7 +328,28 @@ def myshow_selector_mask(img_dir, always_shown=None, **kwargs):
         else:
             mask_img_1 = mask_imgs[mask_idx_1]
             mask_img_2 = mask_imgs[mask_idx_2]
-            mask_img = sitk.Maximum(mask_img_1, mask_img_2)
+            ### Do color editing in numpy, then convert back to sitk image
+            mask_array_1 = sitk.GetArrayFromImage(mask_img_1)
+            mask_array_2 = sitk.GetArrayFromImage(mask_img_2)
+            if is_color(mask_array_1):
+                color_mask_1 = mask_array_1
+            else:
+                ### Get white mask in rgb format
+                white_rgb_vec = np.array(matplotlib.colors.to_rgb("white"))
+                color_mask_1 = np.zeros((*mask_array_1.shape, 3), dtype=np.float32)
+                color_mask_1[mask_array_1.astype(bool)] = white_rgb_vec
+            if is_color(mask_array_2):
+                color_mask_2 = mask_array_2
+            else:
+                ### Get red mask in rgb format
+                red_rgb_vec = np.array(matplotlib.colors.to_rgb("red"))
+                color_mask_2 = np.zeros((*mask_array_2.shape, 3), dtype=np.float32)
+                color_mask_2[mask_array_2.astype(bool)] = red_rgb_vec
+            ###combine the two color masks into a single mask
+            combined_color_mask = color_mask_1
+            combined_color_mask[mask_array_2.astype(bool)] = color_mask_2[mask_array_2.astype(bool)]
+            
+            mask_img = sitk.GetImageFromArray(combined_color_mask, isVector=True)
         myshow_composition_mask(display_imgs, mask_img, title=display_titles, **kwargs)
 
     widgets.interact(_update, image_idx=image_dropdown, mask_idx_1=mask_dropdown, mask_idx_2=mask_dropdown_2)
